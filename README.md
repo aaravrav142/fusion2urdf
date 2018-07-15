@@ -2,8 +2,6 @@
 
 This is a fusion 360 script to export urdf from fusion 360 directly.
 
-Currenty, this script supports only revolute joints. Let me know if your model has joints except for revolute type.
-
 **convertSTL.rb** was created by [@Chris Polis](https://github.com/cmpolis/convertSTL#author)
 
 ## Before using this script
@@ -12,6 +10,7 @@ Before using this script, make sure that your model consists of only components.
 
 <img src="https://github.com/syuntoku14/fusion2urdf/blob/images/spot_mini.PNG" alt="spot_mini" title="spot_mini" width="300" height="300">
 
+In addition to that, this script currentely supports only revolute joints. Let me know if your model has joints except for revolute type.
 
 ## How to use
 
