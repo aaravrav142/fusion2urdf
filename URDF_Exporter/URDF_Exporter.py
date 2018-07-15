@@ -76,9 +76,9 @@ def link_gen(dct, repo, link_dict, file_name, inertial_dict):
     """
     with open(file_name, mode='a') as f:
         # about base_link
-        link = Link(name='base_link', xyz=[0,0,0], repo=repo,\
-            mass=inertial_dict['base_link']['mass'],
-            inertia=inertial_dict['base_link']['inertia'])
+        link = Link(name='base_link__1', xyz=[0,0,0], repo=repo,\
+            mass=inertial_dict['base_link__1']['mass'],
+            inertia=inertial_dict['base_link__1']['inertia'])
         link.gen_link_xml()
         f.write(link.xml)
         link_dict[link.name] = link.xyz
@@ -92,7 +92,23 @@ def link_gen(dct, repo, link_dict, file_name, inertial_dict):
             f.write(link.xml)
             link_dict[link.name] = link.xyz
        
-       
+def set_inertial_dict(root, inertial_dict, msg):
+    # Get component properties.      
+    allOccs = root.occurrences
+    for occs in allOccs:
+        # Skip the root component.
+        occs_dict = {}
+        prop = occs.getPhysicalProperties(adsk.fusion.CalculationAccuracy.HighCalculationAccuracy)
+        occs_dict['mass'] = round(prop.mass, 6)  #kg
+        occs_dict['inertia'] = [round(i / 10000.0, 6) for i in \
+        prop.getXYZMomentsOfInertia()[1:]]  #kg m^2
+        inertial_dict[occs.name.replace(':', '__')] = occs_dict
+        if ' ' in occs.name or '(' in occs.name or ')' in occs.name:
+            msg = 'A space or parenthesis are detected in the name of ' + occs.name + '. Please remove them and run again.'
+            break
+    return msg
+
+
 class Joint:
     def __init__(self, name, xyz, axis, parent, child, type_='continuous'):
         self.name = name
@@ -141,8 +157,9 @@ def set_joints_dict(root, joints_dict, msg):
 
         joint_dict['axis'] = [round(i / 100.0, 6) for i in \
             joint.jointMotion.rotationAxisVector.asArray()]  # converted to meter
-        joint_dict['parent'] = joint.occurrenceTwo.name[:-2]
-        joint_dict['child'] = joint.occurrenceOne.name[:-2]
+        joint_dict['parent'] = joint.occurrenceTwo.name.replace(':', '__')
+        joint_dict['child'] = joint.occurrenceOne.name.replace(':', '__')
+        
         try:
             joint_dict['xyz'] = [round(i / 100.0, 6) for i in \
             joint.geometryOrOriginOne.origin.asArray()]  # converted to meter
@@ -151,30 +168,12 @@ def set_joints_dict(root, joints_dict, msg):
                 joint_dict['xyz'] = [round(i / 100.0, 6) for i in \
                 joint.geometryOrOriginTwo.origin.asArray()]  # converted to meter
             except:
-                msg = joint.name + " doesn't have joint origin. Please set it and run Again."
+                msg = joint.name + " doesn't have joint origin. Please set it and run again."
                 break
-        if ' ' in joint.name:
-            msg = 'A space is detected in the name of ' + joint.name + '. Please remove spaces and run again.'
+        if ' ' in joint.name or '(' in joint.name or ')' in joint.name:
+            msg = 'A space or parenthesis are detected in the name of ' + joint.name + '. Please remove spaces and run again.'
             break
         joints_dict[joint.name] = joint_dict
-    return msg
-
-
-def set_inertial_dict(root, components, inertial_dict, msg):
-    # Get component properties.            
-    for component in components:
-        # Skip the root component.
-        component_dict = {}
-        if root == component:
-            continue
-        prop = component.getPhysicalProperties(adsk.fusion.CalculationAccuracy.HighCalculationAccuracy);
-        component_dict['mass'] = round(prop.mass, 6)  #kg
-        component_dict['inertia'] = [round(i / 10000.0, 6) for i in \
-        prop.getXYZMomentsOfInertia()[1:]]  #kg m^2
-        inertial_dict[component.name] = component_dict
-        if ' ' in component.name:
-            msg = 'A space is detected in the name of ' + component.name + '. Please remove spaces and run again.'
-            break
     return msg
 
 
@@ -205,29 +204,36 @@ def file_dialog(ui):
         return False
         
 
-def copy_body(allOccs, old_comp):
-    bodies = old_comp.bRepBodies
-    transform = adsk.core.Matrix3D.create()    
-    occs = allOccs.addNewComponent(transform)  # this create new occs
-    old_comp.name, occs.component.name = occs.component.name, old_comp.name  #swap the name
-    old_comp.name = 'old_component'
-    occs = allOccs[-1]
-    for i in range(bodies.count):
-        body = bodies.item(i)
-        body.copyToComponent(occs)
+def copy_body(allOccs, old_occs):
+    # copy the old occs to new component
+    bodies = old_occs.bRepBodies
+    transform = adsk.core.Matrix3D.create()
+    old_component_name = old_occs.component.name
     
+    # Create new components from occs
+    # This support even when a component has some occses. 
+    same_occs = []  
+    for occs in allOccs:
+        if occs.component.name == old_component_name:
+            same_occs.append(occs)
+    for occs in same_occs:
+        new_occs = allOccs.addNewComponent(transform)  # this create new occs
+        new_occs.component.name = occs.name.replace(':', '__')
+        new_occs = allOccs[-1]
+        for i in range(bodies.count):
+            body = bodies.item(i)
+            body.copyToComponent(new_occs)
+    old_occs.component.name = 'old_component'
 
-def copy_component(components, allOccs, root):    
+
+def copy_occs(root):    
     # duplicate all the components
-    coppied = []
-    for component in components:
-        name = component.name
-        if component == root or ('old_component' in name) or (name in coppied):
-            continue
-        if component.bRepBodies.count > 0:
-            copy_body(allOccs, component)
-            coppied.append(name)
-    #print(coppied)
+    allOccs = root.occurrences
+    coppy_list = [occs for occs in allOccs]
+    for occs in coppy_list:
+        name = occs.name.replace(':', '__')
+        if occs.bRepBodies.count > 0:
+            copy_body(allOccs, occs)
 
 
 def export_stl(design, save_dir, components):
@@ -270,10 +276,9 @@ def run(context):
         if not design:
             ui.messageBox('No active Fusion design', title)
             return
-        
+
+        root = design.rootComponent  # root component 
         components = design.allComponents
-        root = design.rootComponent  # root component        
-        allOccs = root.occurrences
 
         # set the names        
         package_name = 'fusion2urdf'
@@ -294,23 +299,24 @@ def run(context):
         if msg != success_msg:
             ui.messageBox(msg, title)
             return 0
-            
+        print('joint_ok')    
         # Get inertial information.
         inertial_dict = {}
-        msg = set_inertial_dict(root, components, inertial_dict, msg)
+        msg = set_inertial_dict(root, inertial_dict, msg)
         if msg != success_msg:
             ui.messageBox(msg, title)
             return 0
-        elif not 'base_link' in inertial_dict:
+        elif not 'base_link__1' in inertial_dict:
             msg = 'There is no base_link. Please set base_link and run again.'
             ui.messageBox(msg, title)
             return 0
+        print('inertial_ok')
         
         links_dict = {}
         gen_urdf(joints_dict, links_dict, inertial_dict, package_name, save_dir, robot_name)
 
         # Generate STl files        
-        copy_component(components, allOccs, root)
+        copy_occs(root)
         export_stl(design, save_dir, components)   
         
         ui.messageBox(msg, title)
