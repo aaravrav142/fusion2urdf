@@ -76,9 +76,9 @@ def link_gen(dct, repo, link_dict, file_name, inertial_dict):
     """
     with open(file_name, mode='a') as f:
         # about base_link
-        link = Link(name='base_link__1', xyz=[0,0,0], repo=repo,\
-            mass=inertial_dict['base_link__1']['mass'],
-            inertia=inertial_dict['base_link__1']['inertia'])
+        link = Link(name='base_link', xyz=[0,0,0], repo=repo,\
+            mass=inertial_dict['base_link']['mass'],
+            inertia=inertial_dict['base_link']['inertia'])
         link.gen_link_xml()
         f.write(link.xml)
         link_dict[link.name] = link.xyz
@@ -102,7 +102,10 @@ def set_inertial_dict(root, inertial_dict, msg):
         occs_dict['mass'] = round(prop.mass, 6)  #kg
         occs_dict['inertia'] = [round(i / 10000.0, 6) for i in \
         prop.getXYZMomentsOfInertia()[1:]]  #kg m^2
-        inertial_dict[occs.name.replace(':', '__')] = occs_dict
+        if occs.component.name == 'base_link':
+            inertial_dict['base_link'] = occs_dict
+        else:
+            inertial_dict[occs.name.replace(':', '__')] = occs_dict
         if ' ' in occs.name or '(' in occs.name or ')' in occs.name:
             msg = 'A space or parenthesis are detected in the name of ' + occs.name + '. Please remove them and run again.'
             break
@@ -157,7 +160,10 @@ def set_joints_dict(root, joints_dict, msg):
 
         joint_dict['axis'] = [round(i / 100.0, 6) for i in \
             joint.jointMotion.rotationAxisVector.asArray()]  # converted to meter
-        joint_dict['parent'] = joint.occurrenceTwo.name.replace(':', '__')
+        if joint.occurrenceTwo.component.name == 'base_link':
+            joint_dict['parent'] = 'base_link'
+        else:
+            joint_dict['parent'] = joint.occurrenceTwo.name.replace(':', '__')
         joint_dict['child'] = joint.occurrenceOne.name.replace(':', '__')
         
         try:
@@ -218,7 +224,11 @@ def copy_body(allOccs, old_occs):
             same_occs.append(occs)
     for occs in same_occs:
         new_occs = allOccs.addNewComponent(transform)  # this create new occs
-        new_occs.component.name = occs.name.replace(':', '__')
+        if occs.component.name == 'base_link':
+            old_occs.component.name = 'old_component'
+            new_occs.component.name = 'base_link'
+        else:
+            new_occs.component.name = occs.name.replace(':', '__')
         new_occs = allOccs[-1]
         for i in range(bodies.count):
             body = bodies.item(i)
@@ -231,7 +241,6 @@ def copy_occs(root):
     allOccs = root.occurrences
     coppy_list = [occs for occs in allOccs]
     for occs in coppy_list:
-        name = occs.name.replace(':', '__')
         if occs.bRepBodies.count > 0:
             copy_body(allOccs, occs)
 
@@ -306,7 +315,7 @@ def run(context):
         if msg != success_msg:
             ui.messageBox(msg, title)
             return 0
-        elif not 'base_link__1' in inertial_dict:
+        elif not 'base_link' in inertial_dict:
             msg = 'There is no base_link. Please set base_link and run again.'
             ui.messageBox(msg, title)
             return 0
